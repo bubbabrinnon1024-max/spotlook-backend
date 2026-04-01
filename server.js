@@ -1,12 +1,17 @@
 console.log("SERVER STARTING...");
 const express = require("express");
 const cors = require("cors");
+const { friendRequestsRouter } = require("./friendRequests");
+const { musicMatchRouter } = require("./musicMatch");
 
 const app = express();
+const sessions = new Map();
+
 app.use(cors());
 app.use(express.json());
-
-const sessions = new Map();
+app.use("/friend-request", friendRequestsRouter);
+app.locals.sessionsStore = sessions;
+app.use("/music-match", musicMatchRouter);
 
 app.post("/register-device", (req, res) => {
   const { ownerCode, spotifyAccessToken } = req.body;
@@ -69,6 +74,7 @@ app.get("/health", (_, res) => {
   res.json({ ok: true });
 });
 
-const port = process.env.PORT || 3000;app.listen(port, () => {
-  console.log(`Server running on http://localhost:${port}`);
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
 });
