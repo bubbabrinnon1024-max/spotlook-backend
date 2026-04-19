@@ -9,13 +9,13 @@ function now() { return new Date().toISOString(); }
 
 function getProfile(ownerCode) {
   if (!profiles.has(ownerCode)) {
-    profiles.set(ownerCode, { ownerCode: ownerCode, avatar: null, status: "", badge: "", updatedAt: now() });
+    profiles.set(ownerCode, { ownerCode: ownerCode, avatar: null, status: "", badge: "", email: "", phone: "", verified: false, updatedAt: now() });
   }
   return profiles.get(ownerCode);
 }
 
-// Seed the dev profile on startup
-profiles.set("1234", { ownerCode: "1234", avatar: null, status: "the dev", badge: "DEV", updatedAt: now() });
+// Seed dev profile
+profiles.set("1234", { ownerCode: "1234", avatar: null, status: "the dev", badge: "DEV", email: "", phone: "", verified: true, updatedAt: now() });
 
 router.post("/avatar", function(req, res) {
   var ownerCode = cleanCode(req.body && req.body.ownerCode);
