@@ -320,6 +320,124 @@ app.get("/friends", function(req, res) {
   return res.json({ ownerCode: ownerCode, friends: Array.from(getFriendsFor(ownerCode)) });
 });
 
+// Secret admin panel — only accessible with the secret token
+// iOS app taps phone number 5x to get here via: /admin?token=9048841193
+app.get("/admin", function(req, res) {
+  var token = req.query.token || "";
+  if (token !== "9048841193") {
+    return res.status(403).send("<!DOCTYPE html><html><body style='background:#0d0d1a;color:white;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh'><h2>403 Forbidden</h2></body></html>");
+  }
+  var profileList = Array.from(profilesStore.values());
+  var sessionList = Array.from(sessions.values());
+  var rows = profileList.map(function(p) {
+    var sess = sessions.get(p.ownerCode);
+    var hasSpotify = sess && sess.refreshToken ? "yes" : "no";
+    var song = sess && sess.currentSong ? sess.currentSong.songTitle + " - " + sess.currentSong.artistNames : "nothing";
+    return "<tr style='border-bottom:1px solid rgba(255,255,255,0.08)'>"
+      + "<td style='padding:12px 16px;font-weight:600'>" + p.ownerCode + (p.ownerCode === "1234" ? " <span style='background:linear-gradient(135deg,#a78bfa,#ec4899);color:white;font-size:10px;padding:2px 8px;border-radius:999px;margin-left:6px'>DEV</span>" : "") + "</td>"
+      + "<td style='padding:12px 16px;color:rgba(255,255,255,0.6)'>" + (p.status || "-") + "</td>"
+      + "<td style='padding:12px 16px;color:rgba(255,255,255,0.6)'>" + hasSpotify + "</td>"
+      + "<td style='padding:12px 16px;color:rgba(255,255,255,0.5);font-size:12px'>" + song + "</td>"
+      + "<td style='padding:12px 16px'><button onclick=\"deleteProfile('" + p.ownerCode + "')\" style='background:#ef4444;border:none;color:white;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:13px'>Delete</button></td>"
+      + "</tr>";
+  }).join("");
+  var orphanSessions = sessionList.filter(function(s) { return !profilesStore.has(s.ownerCode); });
+  var orphanRows = orphanSessions.map(function(s) {
+    var song = s.currentSong ? s.currentSong.songTitle + " - " + s.currentSong.artistNames : "nothing";
+    return "<tr style='border-bottom:1px solid rgba(255,255,255,0.05)'>"
+      + "<td style='padding:12px 16px;font-weight:600;color:rgba(255,255,255,0.5)'>" + s.ownerCode + " <span style='color:rgba(255,255,255,0.3);font-size:11px'>(session only)</span></td>"
+      + "<td style='padding:12px 16px;color:rgba(255,255,255,0.4)'>-</td>"
+      + "<td style='padding:12px 16px;color:rgba(255,255,255,0.4)'>" + (s.refreshToken ? "yes" : "no") + "</td>"
+      + "<td style='padding:12px 16px;color:rgba(255,255,255,0.4);font-size:12px'>" + song + "</td>"
+      + "<td style='padding:12px 16px'><button onclick=\"deleteSession('" + s.ownerCode + "')\" style='background:rgba(239,68,68,0.4);border:none;color:white;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:13px'>Clear</button></td>"
+      + "</tr>";
+  }).join("");
+  res.send("<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'/><meta name='viewport' content='width=device-width,initial-scale=1'/><title>SpotPeek Admin</title><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a12;color:white;font-family:-apple-system,BlinkMacSystemFont,sans-serif;min-height:100vh;padding:32px 24px}.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px}.title{font-size:24px;font-weight:700;background:linear-gradient(90deg,#a78bfa,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent}.badge{background:rgba(167,139,250,0.15);border:1px solid rgba(167,139,250,0.3);color:#a78bfa;font-size:12px;font-weight:600;padding:4px 12px;border-radius:999px}.stats{display:flex;gap:16px;margin-bottom:28px;flex-wrap:wrap}.stat{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:16px 20px;min-width:120px}.stat-val{font-size:28px;font-weight:700;color:white}.stat-label{font-size:12px;color:rgba(255,255,255,0.4);margin-top:2px}.section-title{font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,0.38);margin-bottom:12px}.table-wrap{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:16px;overflow:hidden;margin-bottom:32px;overflow-x:auto}table{width:100%;border-collapse:collapse}th{padding:12px 16px;text-align:left;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,0.35);background:rgba(255,255,255,0.03)}tr:hover td{background:rgba(255,255,255,0.02)}.del-all{background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#ef4444;padding:10px 20px;border-radius:10px;cursor:pointer;font-size:14px;font-weight:600;margin-bottom:32px}</style></head><body>"
+    + "<div class='header'><div class='title'>SpotPeek Admin</div><div class='badge'>Private</div></div>"
+    + "<div class='stats'>"
+    + "<div class='stat'><div class='stat-val'>" + profileList.length + "</div><div class='stat-label'>Profiles</div></div>"
+    + "<div class='stat'><div class='stat-val'>" + sessions.size + "</div><div class='stat-label'>Sessions</div></div>"
+    + "<div class='stat'><div class='stat-val'>" + sessionList.filter(function(s){return s.refreshToken;}).length + "</div><div class='stat-label'>Polled</div></div>"
+    + "<div class='stat'><div class='stat-val'>" + Array.from(friends.values()).reduce(function(t,s){return t+s.size;},0) + "</div><div class='stat-label'>Friendships</div></div>"
+    + "</div>"
+    + "<div class='section-title'>Profiles (" + profileList.length + ")</div>"
+    + "<div class='table-wrap'><table><thead><tr><th>Code</th><th>Status</th><th>Spotify</th><th>Now Playing</th><th>Action</th></tr></thead><tbody>" + (rows || "<tr><td colspan='5' style='padding:24px;text-align:center;color:rgba(255,255,255,0.3)'>No profiles yet</td></tr>") + "</tbody></table></div>"
+    + (orphanRows ? "<div class='section-title'>Sessions without profiles</div><div class='table-wrap'><table><thead><tr><th>Code</th><th>Status</th><th>Spotify</th><th>Now Playing</th><th>Action</th></tr></thead><tbody>" + orphanRows + "</tbody></table></div>" : "")
+    + "<button class='del-all' onclick='clearAll()'>Clear All Sessions & Profiles</button>"
+    + "<script>"
+    + "async function deleteProfile(code){"
+    + "if(!confirm('Delete profile for '+code+'?'))return;"
+    + "await fetch('/admin/delete-profile?token=9048841193',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ownerCode:code})});"
+    + "location.reload();}"
+    + "async function deleteSession(code){"
+    + "await fetch('/admin/delete-session?token=9048841193',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ownerCode:code})});"
+    + "location.reload();}"
+    + "async function clearAll(){"
+    + "if(!confirm('Clear EVERYTHING? This cannot be undone.'))return;"
+    + "await fetch('/admin/clear-all?token=9048841193',{method:'POST'});"
+    + "location.reload();}"
+    + "</script></body></html>");
+});
+
+app.post("/admin/delete-profile", function(req, res) {
+  if ((req.query.token || "") !== "9048841193") return res.status(403).json({ error: "Forbidden" });
+  var code = String((req.body && req.body.ownerCode) || "").trim().toUpperCase();
+  profilesStore.delete(code);
+  sessions.delete(code);
+  return res.json({ ok: true });
+});
+
+app.post("/admin/delete-session", function(req, res) {
+  if ((req.query.token || "") !== "9048841193") return res.status(403).json({ error: "Forbidden" });
+  var code = String((req.body && req.body.ownerCode) || "").trim().toUpperCase();
+  sessions.delete(code);
+  return res.json({ ok: true });
+});
+
+app.post("/admin/clear-all", function(req, res) {
+  if ((req.query.token || "") !== "9048841193") return res.status(403).json({ error: "Forbidden" });
+  profilesStore.clear();
+  sessions.clear();
+  friends.clear();
+  return res.json({ ok: true });
+});
+
+// GET /profiles/dev/:ownerCode — returns profile with DEV badge flag
+app.get("/dev-profile/:ownerCode", function(req, res) {
+  var code = String(req.params.ownerCode || "").trim().toUpperCase();
+  var isDev = code === "1234";
+  var profile = profilesStore.get(code) || { ownerCode: code, avatar: null, status: "" };
+  return res.json(Object.assign({}, profile, { isDev: isDev }));
+});
+
+// ─────────────────────────────────────────────────────────────
+// ADMIN DASHBOARD — secret URL, only share with yourself
+// GET /admin/timmy-dev-backdoor-9x2k
+// ─────────────────────────────────────────────────────────────
+app.get("/admin/timmy-dev-backdoor-9x2k", function(req, res) {
+  var allProfiles = Array.from(profilesStore.values());
+  var allSessions = Array.from(sessions.values());
+
+  var rows = allProfiles.map(function(p) {
+    var session = sessions.get(p.ownerCode);
+    var song = session && session.currentSong ? session.currentSong.songTitle + " - " + session.currentSong.artistNames : "nothing";
+    var isPolled = session && session.refreshToken ? "yes" : "no";
+    var av = p.avatar ? "<img src='" + p.avatar + "' style='width:40px;height:40px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px'/>" : "<div style='width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#a78bfa,#ec4899);display:inline-flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:13px;margin-right:8px;vertical-align:middle'>" + p.ownerCode.slice(0,2) + "</div>";
+    return "<tr><td style='padding:12px 16px'>" + av + "<b>" + p.ownerCode + "</b>" + (p.badge ? " <span style='background:#a78bfa;color:white;font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;margin-left:4px'>" + p.badge + "</span>" : "") + "</td><td style='padding:12px 16px;color:rgba(255,255,255,0.6)'>" + (p.status || "-") + "</td><td style='padding:12px 16px;color:rgba(255,255,255,0.5);font-size:12px'>" + song + "</td><td style='padding:12px 16px'><span style='color:" + (isPolled === "yes" ? "#22c55e" : "rgba(255,255,255,0.3)") + ";font-size:12px'>" + (isPolled === "yes" ? "live" : "app only") + "</span></td><td style='padding:12px 16px'><button onclick=\"deleteProfile('" + p.ownerCode + "')\" style='background:#ef4444;color:white;border:none;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:12px;font-weight:600'>Delete</button></td></tr>";
+  }).join("");
+
+  res.send("<!DOCTYPE html><html><head><meta charset='UTF-8'/><meta name='viewport' content='width=device-width,initial-scale=1'/><title>SpotPeek Admin</title><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a14;color:white;font-family:-apple-system,sans-serif;padding:32px 24px}h1{font-size:24px;font-weight:700;background:linear-gradient(90deg,#a78bfa,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:4px}.sub{font-size:13px;color:rgba(255,255,255,0.35);margin-bottom:28px}.stats{display:flex;gap:12px;margin-bottom:28px;flex-wrap:wrap}.stat{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px 20px}.stat-val{font-size:26px;font-weight:700;color:white}.stat-lbl{font-size:11px;color:rgba(255,255,255,0.35);margin-top:2px}table{width:100%;border-collapse:collapse;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:16px;overflow:hidden}th{padding:12px 16px;text-align:left;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,0.35);border-bottom:1px solid rgba(255,255,255,0.07)}tr:not(:last-child) td{border-bottom:1px solid rgba(255,255,255,0.05)}.empty{padding:40px;text-align:center;color:rgba(255,255,255,0.3)}</style></head><body><h1>SpotPeek Admin</h1><p class='sub'>Secret dashboard - don't share this URL</p><div class='stats'><div class='stat'><div class='stat-val'>" + allProfiles.length + "</div><div class='stat-lbl'>Profiles</div></div><div class='stat'><div class='stat-val'>" + allSessions.filter(function(s){return s.refreshToken;}).length + "</div><div class='stat-lbl'>Live (polled)</div></div><div class='stat'><div class='stat-val'>" + sessions.size + "</div><div class='stat-lbl'>Total sessions</div></div></div>" + (allProfiles.length ? "<table><thead><tr><th>Code</th><th>Status</th><th>Now Playing</th><th>Connection</th><th>Action</th></tr></thead><tbody>" + rows + "</tbody></table>" : "<div class='empty'>No profiles yet</div>") + "<script>async function deleteProfile(code){if(!confirm('Delete profile for '+code+'?'))return;await fetch('/admin/timmy-dev-backdoor-9x2k/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code})});location.reload();}<\/script></body></html>");
+});
+
+app.post("/admin/timmy-dev-backdoor-9x2k/delete", function(req, res) {
+  var code = String((req.body && req.body.code) || "").trim().toUpperCase();
+  if (!code) return res.status(400).json({ error: "Missing code" });
+  profilesStore.delete(code);
+  sessions.delete(code);
+  console.log("[admin] Deleted profile + session for " + code);
+  return res.json({ ok: true, deleted: code });
+});
+
 app.get("/health", function(req, res) {
   var all = Array.from(sessions.values());
   return res.json({
