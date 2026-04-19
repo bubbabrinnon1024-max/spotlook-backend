@@ -5,7 +5,7 @@ const cors    = require("cors");
 
 const { friendRequestsRouter }                         = require("./friendRequests");
 const { musicMatchRouter }                             = require("./musicMatch");
-const { reactionsRouter, clearReactionsIfSongChanged } = require("./reactions");
+function clearReactionsIfSongChanged() {}
 const { profilesRouter, profilesStore }                = require("./profiles");
 
 const SPOTIFY_CLIENT_ID     = process.env.SPOTIFY_CLIENT_ID     || "3075a1f167c04eb7995e72ef633dbb7d";
@@ -153,7 +153,7 @@ app.locals.profilesStore = profilesStore;
 
 app.use("/friend-request", friendRequestsRouter);
 app.use("/music-match",    musicMatchRouter);
-app.use("/reactions",      reactionsRouter);
+
 app.use("/profiles",       profilesRouter);
 
 const UI_BASE_CSS = "*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{height:100%;background:#0d0d1a;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;color:white;overscroll-behavior:none}input,textarea,button{font-family:inherit}";
