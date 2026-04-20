@@ -58,7 +58,7 @@ function sendEmail(to, subject, body) {
       return;
     }
     var payload = JSON.stringify({
-      sender: { name: "SpotPeek", email: "noreply@spotpeek.app" },
+      sender: { name: "SpotPeek", email: "bubbabrinnon1024@gmail.com" },
       to: [{ email: to }],
       subject: subject,
       textContent: body
@@ -201,6 +201,19 @@ app.use("/music-match",    musicMatchRouter);
 app.use("/profiles",       profilesRouter);
 
 // ── OTP: Send code ──
+
+// GET /auth/check-email?email=XXX&ownerCode=YYY
+// Check if email already registered to a different account
+app.get("/auth/check-email", function(req, res) {
+  var email = String((req.query.email) || "").trim().toLowerCase();
+  var ownerCode = String((req.query.ownerCode) || "").trim().toUpperCase();
+  if (!email) return res.status(400).json({ error: "Missing email" });
+  var existing = Array.from(profilesStore.values()).find(function(p) {
+    return p.email && p.email.toLowerCase() === email && p.ownerCode !== ownerCode;
+  });
+  return res.json({ exists: !!existing });
+});
+
 // POST /auth/send-otp  body: { ownerCode, contact, type: "email"|"phone" }
 app.post("/auth/send-otp", async function(req, res) {
   var ownerCode = normalizeCode(req.body && req.body.ownerCode);
@@ -208,6 +221,31 @@ app.post("/auth/send-otp", async function(req, res) {
   var type      = String((req.body && req.body.type)    || "email").trim().toLowerCase();
   if (!ownerCode || !contact) return res.status(400).json({ error: "Missing ownerCode or contact" });
   if (type !== "email" && type !== "phone") return res.status(400).json({ error: "type must be email or phone" });
+
+  // Server-side email blocking
+  if (type === "email") {
+    var blockedDomains = ["privaterelay.appleid.com","mailinator.com","guerrillamail.com","tempmail.com","throwam.com","sharklasers.com","guerrillamailblock.com","grr.la","guerrillamail.info","guerrillamail.biz","guerrillamail.de","guerrillamail.net","guerrillamail.org","spam4.me","trashmail.com","trashmail.me","trashmail.net","yopmail.com","maildrop.cc","discard.email","fakeinbox.com","tempr.email","10minutemail.com","10minutemail.net","throwaway.email","getnada.com"];
+    var emailLower = contact.toLowerCase();
+    var atIdx = emailLower.lastIndexOf("@");
+    var domain = atIdx >= 0 ? emailLower.slice(atIdx + 1) : "";
+    var localPart = atIdx >= 0 ? emailLower.slice(0, atIdx) : emailLower;
+    if (domain.indexOf("privaterelay.appleid.com") >= 0) {
+      return res.status(400).json({ error: "Apple Hide My Email is not allowed. Use your real email address." });
+    }
+    if (blockedDomains.indexOf(domain) >= 0) {
+      return res.status(400).json({ error: "Disposable or temporary email addresses are not allowed." });
+    }
+    if (localPart.indexOf("+") >= 0) {
+      return res.status(400).json({ error: "Email aliases with + are not allowed. Use your main email address." });
+    }
+    // Check if email already used by a different account
+    var existingProfile = Array.from(profilesStore.values()).find(function(p) {
+      return p.email && p.email.toLowerCase() === emailLower && p.ownerCode !== ownerCode;
+    });
+    if (existingProfile) {
+      return res.status(409).json({ error: "This email is already linked to another account." });
+    }
+  }
 
   var otp     = generateOTP();
   var expires = Date.now() + 10 * 60 * 1000; // 10 minutes
