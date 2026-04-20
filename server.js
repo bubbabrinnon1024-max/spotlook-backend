@@ -191,8 +191,28 @@ app.use(function(req, res, next) {
   ip = ip.split(",")[0].trim();
   var ua = req.headers["user-agent"] || "unknown";
   var ownerCode = req.body && req.body.ownerCode ? String(req.body.ownerCode).trim().toUpperCase() : (req.query.ownerCode ? String(req.query.ownerCode).trim().toUpperCase() : "");
-  // Geo lookup (fire and forget)
-  var logEntry = { ip: ip, userAgent: ua, ownerCode: ownerCode, path: req.path, ts: new Date().toISOString(), city: "", country: "", region: "" };
+  // Build enriched log entry
+  var profile = ownerCode ? profilesStore.get(ownerCode) : null;
+  var logEntry = {
+    ip: ip,
+    userAgent: ua,
+    ownerCode: ownerCode,
+    path: req.path,
+    ts: new Date().toISOString(),
+    city: "", country: "", region: "",
+    name: profile ? (profile.name || profile.ownerCode || "") : "",
+    email: profile ? (profile.email || "") : "",
+    friendCount: profile ? (profile.friends ? profile.friends.length : 0) : 0,
+    spotifyConnected: profile ? !!(profile.spotifyAccessToken || profile.accessToken) : false,
+    lastSong: profile ? (profile.currentSong || profile.lastSong || "") : "",
+    appVersion: req.headers["x-app-version"] || "",
+    openCount: 0
+  };
+  // Track open count per ownerCode
+  if (ownerCode) {
+    var existing = ipLog.find(function(e) { return e.ownerCode === ownerCode; });
+    logEntry.openCount = existing ? (existing.openCount || 0) + 1 : 1;
+  }
   ipLog.unshift(logEntry);
   if (ipLog.length > 500) ipLog.pop();
   // Async geo lookup via ip-api.com (free, no key needed)
@@ -501,7 +521,7 @@ app.get("/admin/timmy-dev-backdoor-9x2k", function(req, res) {
     "<div id='table'></div>",
     "</div>",
     "<script>",
-    "var B='/admin/timmy-dev-backdoor-9x2k',P='102408',cur='profiles',online=true;",
+    "var B='/admin/timmy-dev-backdoor-9x2k',P='20191009',cur='profiles',online=true;",
     "function chk(){var s=sessionStorage.getItem('tl');if(s===P){document.getElementById('gate').style.display='none';document.getElementById('app').style.display='block';load();}else document.getElementById('gate').style.display='flex';}",
     "function submitPass(){var v=document.getElementById('pinput').value;if(v===P){sessionStorage.setItem('tl',P);chk();}else{document.getElementById('perr').style.display='block';document.getElementById('pinput').value='';}}",
     "document.addEventListener('DOMContentLoaded',function(){chk();document.getElementById('pinput').addEventListener('keydown',function(e){if(e.key==='Enter')submitPass();});});",
@@ -522,10 +542,24 @@ app.get("/admin/timmy-dev-backdoor-9x2k", function(req, res) {
     "document.getElementById('table').innerHTML='<table><thead><tr><th>User</th><th>Note</th><th>Now Playing</th><th>Status</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';}",
     "function parseDevice(ua){if(!ua)return'Unknown';if(/iPhone/.test(ua)){var m=ua.match(/iPhone OS ([\\d_]+)/);return'iPhone'+(m?' iOS '+m[1].replace(/_/g,'.'):'');}if(/iPad/.test(ua))return'iPad';if(/Android/.test(ua)){var m2=ua.match(/Android ([\\d.]+)/);return'Android'+(m2?' '+m2[1]:'');}if(/Mac/.test(ua))return'Mac';if(/Windows/.test(ua))return'Windows';return ua.slice(0,30);}",
     "async function loadLog(){var r=await fetch(B+'/iplog'),logs=await r.json();if(!logs.length){document.getElementById('table').innerHTML='<div class=empty>No visitors yet</div>';return;}",
-    "var rows=logs.map(function(e){var t=new Date(e.ts).toLocaleTimeString(),dd=new Date(e.ts).toLocaleDateString();var dev=parseDevice(e.userAgent);var loc=(e.city||e.region||e.country)?[e.city,e.region,e.country].filter(Boolean).join(', '):'...';",
-    "return '<tr class=ip-row><td><b style=\"font-family:monospace\">'+e.ip+'</b><div style=\"font-size:11px;color:rgba(255,255,255,0.4);margin-top:2px\">&#128205; '+loc+'</div></td><td><b>'+dev+'</b><div class=dtag>'+e.userAgent.slice(0,60)+'</div></td><td style=\"color:#a78bfa\"><code>'+(e.ownerCode||'-')+'</code></td><td style=\"color:rgba(255,255,255,0.4)\">'+e.path+'</td><td style=\"color:rgba(255,255,255,0.3);font-size:11px\">'+dd+' '+t+'</td></tr>';",
+    "var rows=logs.map(function(e){",
+    "var t=new Date(e.ts).toLocaleTimeString(),dd=new Date(e.ts).toLocaleDateString();",
+    "var dev=parseDevice(e.userAgent);",
+    "var loc=(e.city||e.region||e.country)?[e.city,e.region,e.country].filter(Boolean).join(', '):'...';",
+    "var nameEmail=(e.name?'<div style=\"font-weight:700;color:white\">'+e.name+'</div>':'')+(e.email?'<div style=\"font-size:11px;color:#a78bfa\">'+e.email+'</div>':'');",
+    "var extras='';",
+    "if(e.friendCount)extras+='<span style=\"background:rgba(255,255,255,0.07);border-radius:6px;padding:1px 6px;font-size:10px;margin-right:4px\">&#128101; '+e.friendCount+' friends</span>';",
+    "if(e.spotifyConnected)extras+='<span style=\"background:rgba(29,185,84,0.15);border-radius:6px;padding:1px 6px;font-size:10px;color:#1db954;margin-right:4px\">&#9654; Spotify</span>';",
+    "if(e.appVersion)extras+='<span style=\"background:rgba(255,255,255,0.07);border-radius:6px;padding:1px 6px;font-size:10px;margin-right:4px\">v'+e.appVersion+'</span>';",
+    "if(e.openCount>1)extras+='<span style=\"background:rgba(167,139,250,0.15);border-radius:6px;padding:1px 6px;font-size:10px;color:#a78bfa\">&#128065; '+e.openCount+' opens</span>';",
+    "var song=e.lastSong?'<div style=\"font-size:11px;color:rgba(255,255,255,0.4);margin-top:3px\">&#127925; '+e.lastSong+'</div>':'';",
+    "return '<tr class=ip-row><td><b style=\"font-family:monospace\">'+e.ip+'</b><div style=\"font-size:11px;color:rgba(255,255,255,0.4);margin-top:2px\">&#128205; '+loc+'</div></td>'+",
+    "'<td><b>'+dev+'</b><div class=dtag>'+e.userAgent.slice(0,50)+'</div></td>'+",
+    "'<td>'+nameEmail+(e.ownerCode?'<div style=\"font-size:11px;color:rgba(255,255,255,0.3);margin-top:2px\">code: '+e.ownerCode+'</div>':'')+'</td>'+",
+    "'<td>'+extras+song+'</td>'+",
+    "'<td style=\"color:rgba(255,255,255,0.3);font-size:11px\">'+dd+' '+t+'<div style=\"color:rgba(255,255,255,0.2)\">'+e.path+'</div></td></tr>';",
     "}).join('');",
-    "document.getElementById('table').innerHTML='<table><thead><tr><th>IP + Location</th><th>Device</th><th>Code</th><th>Endpoint</th><th>Time</th></tr></thead><tbody>'+rows+'</tbody></table>';}",
+    "document.getElementById('table').innerHTML='<table><thead><tr><th>IP + Location</th><th>Device</th><th>User</th><th>Details</th><th>Time</th></tr></thead><tbody>'+rows+'</tbody></table>';}",
     "async function toggleKill(){if(online){if(!confirm('Kill the app?'))return;}await fetch(B+'/killswitch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({online:!online})});load();}",
     "function del(btn){var code=btn.dataset.code;if(!confirm('Delete '+code+'?'))return;fetch(B+'/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code})}).then(function(){load();});}",
     "load();setInterval(function(){if(cur==='profiles')load();else loadLog();},3000);",
